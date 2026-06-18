@@ -1,0 +1,105 @@
+# Google Cloud Build configuration
+# Deploys both the Next.js app and the routing service to Cloud Run
+
+steps:
+  # ============================================
+  # BUILD ROUTING SERVICE
+  # ============================================
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/routing-service'
+      - './routing-service'
+    id: 'build-routing-service'
+
+  # ============================================
+  # BUILD NEXT.JS APP
+  # ============================================
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/voyage-ai-trip-planner'
+      - '.'
+    id: 'build-trip-planner'
+
+  # ============================================
+  # PUSH IMAGES (in parallel)
+  # ============================================
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/routing-service']
+    id: 'push-routing-service'
+    waitFor: ['build-routing-service']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/voyage-ai-trip-planner']
+    id: 'push-trip-planner'
+    waitFor: ['build-trip-planner']
+
+  # ============================================
+  # DEPLOY ROUTING SERVICE
+  # ============================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'routing-service'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/routing-service'
+      - '--region'
+      - '${_REGION}'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--memory'
+      - '2Gi'
+      - '--cpu'
+      - '2'
+      - '--timeout'
+      - '300'
+    id: 'deploy-routing-service'
+    waitFor: ['push-routing-service']
+
+  # ============================================
+  # DEPLOY NEXT.JS APP
+  # ============================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'voyage-ai-trip-planner'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/voyage-ai-trip-planner'
+      - '--region'
+      - '${_REGION}'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--memory'
+      - '1Gi'
+      - '--set-env-vars'
+      - 'GEMINI_API_KEY=${_GEMINI_API_KEY},API_NINJAS_KEY=${_API_NINJAS_KEY},OPENROUTESERVICE_API_KEY=${_OPENROUTESERVICE_API_KEY},ROUTING_SERVICE_URL=https://routing-service-${_SERVICE_HASH}-${_REGION_SHORT}.a.run.app'
+    id: 'deploy-trip-planner'
+    waitFor: ['push-trip-planner', 'deploy-routing-service']
+
+# Substitution variables (set these in Cloud Build trigger or command line)
+substitutions:
+  _REGION: asia-southeast1
+  _REGION_SHORT: as
+  _SERVICE_HASH: ''          # Will be auto-populated after first deploy
+  _GEMINI_API_KEY: ''        # Set in Cloud Build trigger secrets
+  _API_NINJAS_KEY: ''        # Set in Cloud Build trigger secrets  
+  _OPENROUTESERVICE_API_KEY: '' # Set in Cloud Build trigger secrets
+
+# Build options
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'  # Faster builds
+
+# Container images to store
+images:
+  - 'gcr.io/$PROJECT_ID/voyage-ai-trip-planner'
+  - 'gcr.io/$PROJECT_ID/routing-service'

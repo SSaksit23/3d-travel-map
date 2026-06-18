@@ -1,0 +1,33 @@
+# Dependencies (reinstalled inside the image)
+node_modules
+**/node_modules
+
+# Build artifacts
+.next
+out
+build
+
+# Nested, unrelated project
+voyage-ai-3d
+
+# VCS / IDE / OS
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+
+# Secrets and local env
+.env
+.env.*
+
+# Logs and misc
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+terminals
+
+# Docs / planning
+*.md
+.cursor

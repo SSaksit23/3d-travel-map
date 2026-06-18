@@ -1,0 +1,52 @@
+# Docker Compose for Trip Planner with OSMnx Routing
+# 
+# Services:
+# 1. trip-planner: Next.js application
+# 2. routing-service: OSMnx-based routing microservice
+
+version: '3.8'
+
+services:
+  # Next.js Trip Planner Application
+  trip-planner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - API_NINJAS_KEY=${API_NINJAS_KEY}
+      - OPENROUTESERVICE_API_KEY=${OPENROUTESERVICE_API_KEY}
+      - OSMNX_SERVICE_URL=http://routing-service:8001
+      - ROUTING_SERVICE_URL=http://routing-service:8001
+    depends_on:
+      - routing-service
+    volumes:
+      - ./src:/app/src
+    restart: unless-stopped
+
+  # OSMnx Routing Service
+  routing-service:
+    build:
+      context: ./routing-service
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    volumes:
+      # Persist cache for faster subsequent requests
+      - osmnx-cache:/app/osmnx_cache
+      - route-cache:/app/route_cache
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  osmnx-cache:
+  route-cache:

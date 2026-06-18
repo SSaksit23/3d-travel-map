@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Voyage AI 3D — Project Plan</title>
+<style>
+  @page { size: A4; margin: 18mm 15mm 20mm 15mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Arial, Helvetica, sans-serif;
+    font-size: 10.5pt; line-height: 1.55; color: #1b1f2a;
+    max-width: 100%; margin: 0; padding: 0;
+  }
+  h1, h2, h3, h4 { color: #1f2a52; page-break-after: avoid; line-height: 1.25; }
+  h1 { font-size: 23pt; border-bottom: 3px solid #6366f1; padding-bottom: 8px; margin: 0 0 14px; }
+  h2 { font-size: 15.5pt; border-bottom: 1px solid #dcdce6; padding-bottom: 5px; margin: 26px 0 12px; }
+  h3 { font-size: 12.5pt; margin: 18px 0 8px; }
+  h4 { font-size: 11pt; margin: 14px 0 6px; }
+  p { margin: 8px 0; }
+  a { color: #4f46e5; text-decoration: none; }
+  ul, ol { margin: 8px 0; padding-left: 22px; }
+  li { margin: 3px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 9pt; page-break-inside: avoid; }
+  th, td { border: 1px solid #cdd0db; padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: #eef2ff; color: #28306b; font-weight: 600; }
+  tr:nth-child(even) td { background: #fafbff; }
+  code { background: #f1f1f7; padding: 1px 5px; border-radius: 3px; font-family: "Consolas", "Courier New", monospace; font-size: 9pt; color: #b3146a; }
+  pre { background: #f7f8fc; border: 1px solid #e3e4ef; border-radius: 6px; padding: 12px 14px; overflow: auto; page-break-inside: avoid; margin: 12px 0; }
+  pre code { background: none; padding: 0; color: #2b2f3a; font-size: 9pt; }
+  pre.mermaid { background: #ffffff; border: 1px solid #ececf4; text-align: center; padding: 14px; }
+  blockquote { border-left: 4px solid #6366f1; margin: 12px 0; padding: 4px 14px; color: #4a4f63; background: #f6f7fc; font-style: italic; }
+  hr { border: none; border-top: 1px solid #e0e0ea; margin: 22px 0; }
+  strong { color: #1f2540; }
+  h1 + p, h2 + p { margin-top: 4px; }
+</style>
+</head>
+<body>
+<h1>Voyage AI 3D — Project Draft &amp; Development Plan</h1>
+<p><strong>Document version:</strong> 1.0
+<strong>Date:</strong> 18 June 2026
+<strong>Author:</strong> Engineering
+<strong>Status:</strong> Draft for approval</p>
+<hr>
+<h2>Table of Contents</h2>
+<ol>
+<li><a href="#1-executive-summary">Executive Summary</a></li>
+<li><a href="#2-project-vision--goals">Project Vision &amp; Goals</a></li>
+<li><a href="#3-background--lessons-from-the-prototype">Background &amp; Lessons From the Prototype</a></li>
+<li><a href="#4-scope">Scope</a></li>
+<li><a href="#5-target-users--use-cases">Target Users &amp; Use Cases</a></li>
+<li><a href="#6-functional-requirements">Functional Requirements</a></li>
+<li><a href="#7-non-functional-requirements">Non-Functional Requirements</a></li>
+<li><a href="#8-system-architecture">System Architecture</a></li>
+<li><a href="#9-technology-stack">Technology Stack</a></li>
+<li><a href="#10-data-model">Data Model</a></li>
+<li><a href="#11-ai-multi-agent-system-design">AI Multi-Agent System Design</a></li>
+<li><a href="#12-3d-mapping-integration-openglobus">3D Mapping Integration (OpenGlobus)</a></li>
+<li><a href="#13-proposed-project-structure">Proposed Project Structure</a></li>
+<li><a href="#14-development-roadmap--phases">Development Roadmap &amp; Phases</a></li>
+<li><a href="#15-detailed-task-breakdown">Detailed Task Breakdown</a></li>
+<li><a href="#16-environment--setup-steps">Environment &amp; Setup Steps</a></li>
+<li><a href="#17-testing-strategy">Testing Strategy</a></li>
+<li><a href="#18-deployment--devops">Deployment &amp; DevOps</a></li>
+<li><a href="#19-risks--mitigations">Risks &amp; Mitigations</a></li>
+<li><a href="#20-timeline--milestones">Timeline &amp; Milestones</a></li>
+<li><a href="#21-success-metrics--kpis">Success Metrics &amp; KPIs</a></li>
+<li><a href="#22-future-enhancements">Future Enhancements</a></li>
+<li><a href="#23-appendix">Appendix</a></li>
+</ol>
+<hr>
+<h2>1. Executive Summary</h2>
+<p>Voyage AI 3D is a ground-up rebuild of the existing AI trip-planning prototype. The prototype proved the core idea: upload a travel document, and a multi-agent AI pipeline extracts destinations, builds a day-by-day itinerary, resolves routes and flights, and visualizes everything on a map. The rebuild addresses the structural debt accumulated during rapid iteration and elevates the visualization from a 2D MapLibre map to an interactive <strong>3D globe powered by <a href="https://github.com/openglobus/openglobus">OpenGlobus</a></strong>.</p>
+<p>The new project keeps the proven concepts — document extraction, the agent pipeline, geocoding verification, routing with fallbacks, and the skills/memory layer — but reorganizes them behind clean boundaries (rendering adapter, agent core, API services) so that the 2D and 3D map engines are interchangeable and the AI layer is independently testable.</p>
+<p><strong>Key outcomes:</strong></p>
+<ul>
+<li>A maintainable, well-tested codebase with clear module boundaries.</li>
+<li>A 3D globe experience for itinerary overview, long-haul trips, terrain, and great-circle flight arcs.</li>
+<li>A retained 2D map for fast day-to-day editing.</li>
+<li>A provider-agnostic AI layer (OpenAI today, swappable later).</li>
+</ul>
+<hr>
+<h2>2. Project Vision &amp; Goals</h2>
+<h3>2.1 Vision</h3>
+<blockquote>
+<p>Turn any travel document into a living, explorable 3D journey in seconds.</p>
+</blockquote>
+<h3>2.2 Primary Goals</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Goal</th>
+<th>Definition of Success</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>G1</td>
+<td>Accurate extraction</td>
+<td>≥ 90% of destinations correctly extracted and geolocated from a typical itinerary document</td>
+</tr>
+<tr>
+<td>G2</td>
+<td>3D visualization</td>
+<td>Itinerary renders on an interactive globe with markers, routes, and flight arcs</td>
+</tr>
+<tr>
+<td>G3</td>
+<td>Editing parity</td>
+<td>Users can add/remove/reorder/insert stops and days with live map updates</td>
+</tr>
+<tr>
+<td>G4</td>
+<td>Reliability</td>
+<td>No hard dependency on any single external API; graceful fallbacks everywhere</td>
+</tr>
+<tr>
+<td>G5</td>
+<td>Maintainability</td>
+<td>Map engine is an adapter; AI layer is unit-testable without a browser</td>
+</tr>
+<tr>
+<td>G6</td>
+<td>Exportability</td>
+<td>Full itinerary (incl. flights &amp; trains) exports to PDF/HTML/Text</td>
+</tr>
+</tbody></table>
+<h3>2.3 Non-Goals (for v1)</h3>
+<ul>
+<li>Real-time booking / payments.</li>
+<li>Multi-user collaboration / live sharing.</li>
+<li>Native mobile apps (responsive web only).</li>
+<li>Offline-first / PWA installation.</li>
+</ul>
+<hr>
+<h2>3. Background &amp; Lessons From the Prototype</h2>
+<p>The prototype (Next.js 16 + MapLibre + OpenAI) validated the product but surfaced recurring pain points worth designing away:</p>
+<table>
+<thead>
+<tr>
+<th>Lesson</th>
+<th>Prototype symptom</th>
+<th>New-project response</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Map logic was entangled with trip state</td>
+<td>Stale routes, duplicate React keys, manual route clearing</td>
+<td>Map becomes a pure rendering adapter over derived state</td>
+</tr>
+<tr>
+<td>Geocoding was LLM-dependent and error-prone</td>
+<td>&quot;Flame Mountain&quot; placed in the USA</td>
+<td>Dedicated geocoding service with country hints + centroid sanity checks</td>
+</tr>
+<tr>
+<td>External APIs rate-limited or flaked</td>
+<td>Gemini 429s, OSRM straight lines</td>
+<td>Tool registry with availability checks and fallback chains</td>
+</tr>
+<tr>
+<td>Export missed data</td>
+<td>Flights absent from export</td>
+<td>Export derives from a single normalized itinerary model</td>
+</tr>
+<tr>
+<td>No automated tests</td>
+<td>Regressions found manually</td>
+<td>Test pyramid from day one</td>
+</tr>
+<tr>
+<td>Provider lock-in</td>
+<td>Hard migration Gemini → OpenAI</td>
+<td>Provider-agnostic LLM client interface</td>
+</tr>
+</tbody></table>
+<p><strong>Decision:</strong> carry over <em>concepts and algorithms</em>, not the file structure. Start a clean repository.</p>
+<hr>
+<h2>4. Scope</h2>
+<h3>4.1 In Scope (v1)</h3>
+<ul>
+<li>Document upload &amp; parsing: PDF, DOCX, images (vision), plain text.</li>
+<li>Multi-agent extraction → itinerary → routing → flight/train resolution.</li>
+<li>Geocoding verification with caching.</li>
+<li>3D globe (OpenGlobus) <strong>and</strong> 2D map (MapLibre) with a toggle.</li>
+<li>Day-by-day editing: add, remove, reorder, <strong>insert before/after</strong>, swap days.</li>
+<li>Flights &amp; trains with per-day display.</li>
+<li>Export to PDF / HTML / Text including transport details.</li>
+<li>Trip persistence (local first; pluggable to a database later).</li>
+</ul>
+<h3>4.2 Out of Scope (v1)</h3>
+<ul>
+<li>Authentication &amp; accounts (stub an interface; defer implementation).</li>
+<li>Server-side multi-tenant storage.</li>
+<li>Booking integrations.</li>
+</ul>
+<hr>
+<h2>5. Target Users &amp; Use Cases</h2>
+<h3>5.1 Personas</h3>
+<ul>
+<li><strong>Tour operator / planner</strong> — converts supplier itineraries into client-ready visual plans.</li>
+<li><strong>Independent traveler</strong> — drops a booking confirmation and gets an explorable map.</li>
+<li><strong>Travel content creator</strong> — wants attractive 3D flythroughs of a route.</li>
+</ul>
+<h3>5.2 Key Use Cases</h3>
+<ol>
+<li><strong>UC-1 Document to itinerary:</strong> Upload a multi-day itinerary PDF → see a structured, mapped trip.</li>
+<li><strong>UC-2 Manual refinement:</strong> Insert a missed attraction between two stops; routes recalculate.</li>
+<li><strong>UC-3 Overview vs detail:</strong> Switch to globe for the whole trip, back to 2D to edit a single day.</li>
+<li><strong>UC-4 Flights:</strong> See great-circle arcs between airports with flight metadata.</li>
+<li><strong>UC-5 Export:</strong> Produce a shareable PDF including flights and trains.</li>
+</ol>
+<hr>
+<h2>6. Functional Requirements</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>Priority</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>FR-1</td>
+<td>Accept PDF, DOCX, image, and text uploads</td>
+<td>Must</td>
+</tr>
+<tr>
+<td>FR-2</td>
+<td>Extract destinations, cities, attractions, flights, trains</td>
+<td>Must</td>
+</tr>
+<tr>
+<td>FR-3</td>
+<td>Organize extraction into a day-by-day itinerary</td>
+<td>Must</td>
+</tr>
+<tr>
+<td>FR-4</td>
+<td>Verify &amp; cache geocoded coordinates with country hints</td>
+<td>Must</td>
+</tr>
+<tr>
+<td>FR-5</td>
+<td>Compute road routes with ORS → OSRM → Haversine fallback</td>
+<td>Must</td>
+</tr>
+<tr>
+<td>FR-6</td>
+<td>Resolve flight/train metadata (airports, times, airlines)</td>
+<td>Must</td>
+</tr>
+<tr>
+<td>FR-7</td>
+<td>Render itinerary on a 3D globe (markers, routes, arcs)</td>
+<td>Must</td>
+</tr>
+<tr>
+<td>FR-8</td>
+<td>Render itinerary on a 2D map; toggle between 2D/3D</td>
+<td>Must</td>
+</tr>
+<tr>
+<td>FR-9</td>
+<td>Add / remove / reorder / insert / swap stops and days</td>
+<td>Must</td>
+</tr>
+<tr>
+<td>FR-10</td>
+<td>Stream pipeline progress to the UI (NDJSON)</td>
+<td>Should</td>
+</tr>
+<tr>
+<td>FR-11</td>
+<td>Export PDF / HTML / Text incl. transport</td>
+<td>Must</td>
+</tr>
+<tr>
+<td>FR-12</td>
+<td>Persist trips locally; load/save</td>
+<td>Must</td>
+</tr>
+<tr>
+<td>FR-13</td>
+<td>Filter by day and by location type</td>
+<td>Should</td>
+</tr>
+<tr>
+<td>FR-14</td>
+<td>Accommodation suggestions for overnight transitions</td>
+<td>Could</td>
+</tr>
+<tr>
+<td>FR-15</td>
+<td>Self-improving skills/memory cache for the agents</td>
+<td>Could</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>7. Non-Functional Requirements</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Category</th>
+<th>Requirement</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>NFR-1</td>
+<td>Performance</td>
+<td>First itinerary render &lt; 3s after extraction completes (excl. LLM latency)</td>
+</tr>
+<tr>
+<td>NFR-2</td>
+<td>Performance</td>
+<td>Globe maintains ≥ 30 FPS for trips up to 200 stops on mid-range hardware</td>
+</tr>
+<tr>
+<td>NFR-3</td>
+<td>Reliability</td>
+<td>Every external API has a fallback or graceful degradation</td>
+</tr>
+<tr>
+<td>NFR-4</td>
+<td>Security</td>
+<td>API keys server-side only; never shipped to the client</td>
+</tr>
+<tr>
+<td>NFR-5</td>
+<td>Accessibility</td>
+<td>Keyboard navigation for sidebar &amp; forms; WCAG AA color contrast</td>
+</tr>
+<tr>
+<td>NFR-6</td>
+<td>Maintainability</td>
+<td>≥ 70% unit-test coverage on agent core and data transforms</td>
+</tr>
+<tr>
+<td>NFR-7</td>
+<td>Portability</td>
+<td>Runs on Node 20+; Dockerized for deployment</td>
+</tr>
+<tr>
+<td>NFR-8</td>
+<td>Observability</td>
+<td>Structured logs for each agent step; error tracking hook</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>8. System Architecture</h2>
+<h3>8.1 High-Level Diagram</h3>
+<pre class="mermaid">flowchart TD
+  subgraph Client["Client (Next.js / React)"]
+    UI[Trip Planner UI]
+    Adapter{{Map Adapter}}
+    Globe[OpenGlobus 3D View]
+    Flat[MapLibre 2D View]
+    UI --&gt; Adapter
+    Adapter --&gt; Globe
+    Adapter --&gt; Flat
+  end
+
+  subgraph Server["Server (Next.js API Routes)"]
+    Extract[/extract-document/]
+    RouteAPI[/route/]
+    FlightAPI[/flight/]
+  end
+
+  subgraph Core["AI Agent Core (pure TS)"]
+    Coord[Agent Coordinator]
+    A1[Document Retrieval]
+    A2[Itinerary Creator]
+    A3[Route Creator]
+    A4[Flight/Train Connector]
+    Geo[Geocoding Verifier]
+    Coord --&gt; A1 --&gt; A2 --&gt; Geo --&gt; A3 --&gt; A4
+  end
+
+  subgraph Services["External Services"]
+    LLM[(LLM Provider)]
+    Nominatim[(Nominatim)]
+    ORS[(OpenRouteService)]
+    OSRM[(OSRM)]
+  end
+
+  subgraph Data["Persistence"]
+    Local[(localStorage / DB)]
+    Skills[(Skills + Memory Cache)]
+  end
+
+  UI --&gt;|upload| Extract --&gt; Coord
+  Coord --&gt; LLM
+  Geo --&gt; Nominatim
+  A3 --&gt; ORS
+  A3 --&gt; OSRM
+  A4 --&gt; FlightAPI
+  Coord --&gt; Skills
+  UI --&gt; Local</pre><h3>8.2 Layered Boundaries</h3>
+<ol>
+<li><strong>Presentation layer</strong> — React components, map adapter, view toggle.</li>
+<li><strong>Application/API layer</strong> — Next.js route handlers; thin controllers calling the core.</li>
+<li><strong>Agent core</strong> — framework-free TypeScript; no React, no <code>fetch</code> to the DOM; fully unit-testable.</li>
+<li><strong>Tooling layer</strong> — tool registry wrapping external services with availability + fallback.</li>
+<li><strong>Persistence layer</strong> — pluggable trip store + skills/memory cache.</li>
+</ol>
+<p>The cardinal rule: <strong>the agent core never imports anything browser-specific</strong>, and <strong>the map engines never own trip state</strong> — they render derived props.</p>
+<hr>
+<h2>9. Technology Stack</h2>
+<table>
+<thead>
+<tr>
+<th>Concern</th>
+<th>Choice</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Framework</td>
+<td>Next.js (App Router)</td>
+<td>SSR + API routes + mature ecosystem</td>
+</tr>
+<tr>
+<td>Language</td>
+<td>TypeScript (strict)</td>
+<td>Type safety across core and UI</td>
+</tr>
+<tr>
+<td>3D map</td>
+<td><code>@openglobus/og</code> + <code>@openglobus/openglobus-react</code></td>
+<td>WebGL globe, terrain, React bindings</td>
+</tr>
+<tr>
+<td>2D map</td>
+<td>MapLibre GL</td>
+<td>Fast editing, proven in prototype</td>
+</tr>
+<tr>
+<td>Styling</td>
+<td>Tailwind CSS + shadcn/ui</td>
+<td>Consistent, fast UI</td>
+</tr>
+<tr>
+<td>LLM</td>
+<td>OpenAI (provider-agnostic interface)</td>
+<td>Current provider; swappable</td>
+</tr>
+<tr>
+<td>Geocoding</td>
+<td>Nominatim (OpenStreetMap)</td>
+<td>Free, good coverage with hints</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td>OpenRouteService → OSRM → Haversine</td>
+<td>Layered fallback</td>
+</tr>
+<tr>
+<td>Doc parsing</td>
+<td><code>unpdf</code> (PDF), <code>mammoth</code> (DOCX), LLM vision (images)</td>
+<td>Server-safe, no worker issues</td>
+</tr>
+<tr>
+<td>State</td>
+<td>React state + lightweight store (Zustand or context)</td>
+<td>Avoid prop drilling</td>
+</tr>
+<tr>
+<td>Testing</td>
+<td>Vitest + Testing Library + Playwright</td>
+<td>Unit → integration → e2e</td>
+</tr>
+<tr>
+<td>Packaging</td>
+<td>Docker</td>
+<td>Reproducible deploys</td>
+</tr>
+<tr>
+<td>CI</td>
+<td>GitHub Actions (or Harness)</td>
+<td>Lint, test, build gates</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>10. Data Model</h2>
+<p>The single normalized itinerary model is the source of truth for UI, both maps, and export.</p>
+<pre><code>type Coordinates = { lat: number; lng: number };
+
+type LocationType =
+  | "attraction" | "restaurant" | "hotel" | "landmark"
+  | "city" | "airport" | "station" | "custom";
+
+interface TripLocation {
+  id: string;
+  name: string;
+  description?: string;
+  address?: string;
+  coordinates: Coordinates;
+  type: LocationType;
+  day: number;
+  order: number;
+}
+
+interface RouteInfo {
+  fromLocationId: string;
+  toLocationId: string;
+  coordinates: [number, number][]; // [lng, lat]
+  distance: number;   // meters
+  duration: number;   // seconds
+  mode: "land" | "flight" | "train";
+  isCrossDay?: boolean;
+  fromDay?: number;
+  toDay?: number;
+}
+
+interface FlightInfo {
+  id: string;
+  flightNumber: string;
+  airline: string;
+  departure: TransportEndpoint;
+  arrival: TransportEndpoint;
+  aircraft?: string;
+  duration?: number;
+  distance?: number;
+  day: number;
+}
+
+interface TrainInfo {
+  id: string;
+  trainNumber: string;
+  trainType: "high-speed" | "normal" | "metro" | "other";
+  operator?: string;
+  departure: TransportEndpoint;
+  arrival: TransportEndpoint;
+  duration?: number;
+  distance?: number;
+  day: number;
+}
+
+interface TransportEndpoint {
+  name: string;        // airport/station name
+  code?: string;       // IATA / station code
+  city?: string;
+  country?: string;
+  coordinates: Coordinates;
+  time?: string;       // HH:MM
+}
+
+interface Itinerary {
+  id: string;
+  name: string;
+  days: number[];
+  locations: TripLocation[];
+  routes: RouteInfo[];
+  flights: FlightInfo[];
+  trains: TrainInfo[];
+  createdAt: string;
+  updatedAt: string;
+}</code></pre><p><strong>Design rule:</strong> export, 2D map, and 3D map all derive their visuals from <code>Itinerary</code> — no engine-specific shadow state.</p>
+<hr>
+<h2>11. AI Multi-Agent System Design</h2>
+<h3>11.1 Pipeline</h3>
+<pre class="mermaid">sequenceDiagram
+  participant U as User
+  participant C as Coordinator
+  participant DR as Document Retrieval
+  participant IC as Itinerary Creator
+  participant GV as Geocoding Verifier
+  participant RC as Route Creator
+  participant FC as Flight/Train Connector
+  U-&gt;&gt;C: Upload document
+  C-&gt;&gt;DR: Extract raw entities
+  DR--&gt;&gt;C: Cities, attractions, transport mentions
+  C-&gt;&gt;IC: Structure into days
+  IC--&gt;&gt;C: Draft itinerary (+ estimate coords)
+  C-&gt;&gt;GV: Verify coordinates
+  GV--&gt;&gt;C: Corrected coords (cached)
+  C-&gt;&gt;RC: Compute routes
+  RC--&gt;&gt;C: Land routes (+ fallbacks)
+  C-&gt;&gt;FC: Resolve flights/trains
+  FC--&gt;&gt;C: Enriched transport
+  C--&gt;&gt;U: Stream progress + final itinerary</pre><h3>11.2 Agents</h3>
+<table>
+<thead>
+<tr>
+<th>Agent</th>
+<th>Input</th>
+<th>Output</th>
+<th>Tools</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Document Retrieval</td>
+<td>Raw text / image</td>
+<td>Entities (places, transport)</td>
+<td><code>llm_chat</code>, <code>llm_vision</code></td>
+</tr>
+<tr>
+<td>Itinerary Creator</td>
+<td>Entities</td>
+<td>Draft day-by-day itinerary w/ estimate coords</td>
+<td><code>llm_chat</code>, <code>geocode_cache</code></td>
+</tr>
+<tr>
+<td>Geocoding Verifier</td>
+<td>Draft itinerary</td>
+<td>Verified coordinates</td>
+<td><code>nominatim_geocode</code>, <code>geocode_cache</code></td>
+</tr>
+<tr>
+<td>Route Creator</td>
+<td>Verified itinerary</td>
+<td>Routes per day + cross-day</td>
+<td><code>ors_route</code>, <code>osrm_route</code>, <code>haversine</code></td>
+</tr>
+<tr>
+<td>Flight/Train Connector</td>
+<td>Itinerary + transport mentions</td>
+<td>Enriched flights/trains</td>
+<td><code>airport_lookup</code>, <code>llm_chat</code></td>
+</tr>
+</tbody></table>
+<h3>11.3 Cross-Cutting Subsystems</h3>
+<ul>
+<li><strong>Tool Registry</strong> — self-registering tools with <code>checkFn</code> availability, central <code>dispatch</code>, and <code>dispatchWithFallback</code> chains. Tools disable themselves temporarily on rate-limit (e.g., HTTP 429).</li>
+<li><strong>Skills (procedural memory)</strong> — JSON-backed caches (geocoding results, route results, document patterns).</li>
+<li><strong>Memory</strong> — agent notes + user profile, injected into prompts; updated by a post-run self-improvement step.</li>
+<li><strong>Provider abstraction</strong> — <code>LLMClient</code> interface so OpenAI can be swapped without touching agents.</li>
+</ul>
+<h3>11.4 Geocoding Accuracy Controls</h3>
+<ol>
+<li>Country-code hint inferred from the cluster centroid of draft coordinates.</li>
+<li>Country-constrained Nominatim query first, then unconstrained.</li>
+<li>Sanity check: reject results too far (&gt; ~40°) from the trip centroid.</li>
+<li>Persist verified results to the geocode cache to avoid repeat lookups.</li>
+</ol>
+<hr>
+<h2>12. 3D Mapping Integration (OpenGlobus)</h2>
+<h3>12.1 Adapter Contract</h3>
+<p>Both engines implement one interface so <code>TripPlanner</code> is engine-agnostic:</p>
+<pre><code>interface TripMapProps {
+  itinerary: Itinerary;
+  selectedLocationId?: string | null;
+  visibleDays: Set&lt;number&gt;;
+  visibleTypes: Set&lt;string&gt;;
+  onLocationClick?: (id: string) =&gt; void;
+  onVisibleDaysChange?: (days: Set&lt;number&gt;) =&gt; void;
+}</code></pre><ul>
+<li><code>TripMap2D</code> → MapLibre implementation.</li>
+<li><code>TripMap3D</code> → OpenGlobus implementation.</li>
+<li>A <code>MapViewToggle</code> switches between them; trip state is unaffected.</li>
+</ul>
+<h3>12.2 Mapping Concepts</h3>
+<table>
+<thead>
+<tr>
+<th>Itinerary concept</th>
+<th>OpenGlobus realization</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>TripLocation</code></td>
+<td>Entity with billboard/label, colored by day</td>
+</tr>
+<tr>
+<td><code>RouteInfo</code> (land)</td>
+<td>Polyline on terrain</td>
+</tr>
+<tr>
+<td>Flight</td>
+<td>True great-circle path (improves on 2D arc hack)</td>
+</tr>
+<tr>
+<td>Day colors</td>
+<td>Per-entity / per-polyline styling</td>
+</tr>
+<tr>
+<td><code>visibleDays</code> / <code>visibleTypes</code></td>
+<td>Entity collection visibility filters</td>
+</tr>
+<tr>
+<td>Fit/Fly-to</td>
+<td>Camera animation to bounding region</td>
+</tr>
+</tbody></table>
+<h3>12.3 Next.js Considerations</h3>
+<ul>
+<li>WebGL is client-only → load via <code>dynamic(() =&gt; import(&quot;./TripMap3D&quot;), { ssr: false })</code>.</li>
+<li>Lazy-load OpenGlobus to keep the initial bundle small.</li>
+<li>Simplify long route polylines before rendering to maintain frame rate.</li>
+</ul>
+<h3>12.4 Rollout Strategy</h3>
+<ol>
+<li>PoC: globe + markers + one route.</li>
+<li>Add flights (great-circle) + day colors + filters.</li>
+<li>Add click-to-select + camera fit/fly.</li>
+<li>Reach feature parity, then expose the 2D/3D toggle by default.</li>
+</ol>
+<hr>
+<h2>13. Proposed Project Structure</h2>
+<pre><code>voyage-ai-3d/
+├── src/
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── extract-document/route.ts
+│   │   │   ├── route/route.ts
+│   │   │   └── flight/route.ts
+│   │   ├── layout.tsx
+│   │   └── page.tsx
+│   ├── components/
+│   │   ├── trip-planner/
+│   │   │   ├── TripPlanner.tsx
+│   │   │   ├── TripStopsList.tsx
+│   │   │   ├── ExportItinerary.tsx
+│   │   │   ├── DocumentUpload.tsx
+│   │   │   └── map/
+│   │   │       ├── MapAdapter.tsx
+│   │   │       ├── TripMap2D.tsx       # MapLibre
+│   │   │       ├── TripMap3D.tsx       # OpenGlobus
+│   │   │       └── MapViewToggle.tsx
+│   │   └── ui/                         # shadcn primitives
+│   ├── core/                           # framework-free agent core
+│   │   ├── agents/
+│   │   │   ├── coordinator.ts
+│   │   │   ├── document-retrieval.ts
+│   │   │   ├── itinerary-creator.ts
+│   │   │   ├── geocoding-verifier.ts
+│   │   │   ├── route-creator.ts
+│   │   │   └── transport-connector.ts
+│   │   ├── tools/                      # registry + tool impls
+│   │   ├── skills/                     # procedural memory cache
+│   │   ├── memory/                     # notes + profile
+│   │   ├── llm/                        # provider-agnostic client
+│   │   └── types.ts
+│   ├── lib/                            # shared utils (haversine, parse-json)
+│   └── types/trip.ts                   # normalized Itinerary model
+├── tests/                             # vitest + playwright
+├── docs/                              # this plan + ADRs
+├── public/
+├── Dockerfile
+├── docker-compose.yml
+├── .env.example
+└── package.json</code></pre><hr>
+<h2>14. Development Roadmap &amp; Phases</h2>
+<pre class="mermaid">gantt
+  title Voyage AI 3D — Phased Roadmap
+  dateFormat  YYYY-MM-DD
+  section Foundation
+  Phase 0 Setup           :p0, 2026-06-22, 5d
+  Phase 1 Core + Types    :p1, after p0, 7d
+  section AI Pipeline
+  Phase 2 Agent Core      :p2, after p1, 10d
+  Phase 3 API + Streaming :p3, after p2, 5d
+  section Visualization
+  Phase 4 2D Map          :p4, after p3, 6d
+  Phase 5 3D Globe        :p5, after p4, 10d
+  section Product
+  Phase 6 Editing + Export:p6, after p5, 7d
+  Phase 7 Test + Harden   :p7, after p6, 7d
+  Phase 8 Deploy          :p8, after p7, 4d</pre><table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Name</th>
+<th>Goal</th>
+<th>Exit Criteria</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0</td>
+<td>Setup</td>
+<td>Repo, tooling, CI skeleton</td>
+<td>App builds; lint+test run in CI</td>
+</tr>
+<tr>
+<td>1</td>
+<td>Core foundations</td>
+<td>Types, utils, LLM client, tool registry</td>
+<td>Unit tests green for utils + registry</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Agent core</td>
+<td>Full pipeline framework-free</td>
+<td>Pipeline produces an itinerary from sample text in tests</td>
+</tr>
+<tr>
+<td>3</td>
+<td>API + streaming</td>
+<td>Wire core to Next.js routes; NDJSON progress</td>
+<td>Upload returns streamed itinerary</td>
+</tr>
+<tr>
+<td>4</td>
+<td>2D map</td>
+<td>MapLibre adapter at parity with prototype</td>
+<td>Markers, routes, flights, filters work</td>
+</tr>
+<tr>
+<td>5</td>
+<td>3D globe</td>
+<td>OpenGlobus adapter + toggle</td>
+<td>Globe shows markers, routes, great-circle flights</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Editing + export</td>
+<td>Insert/reorder/swap; PDF/HTML/Text export incl. transport</td>
+<td>Editing updates both maps; export complete</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Test + harden</td>
+<td>Coverage, error states, accessibility</td>
+<td>≥70% core coverage; e2e happy paths pass</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Deploy</td>
+<td>Dockerized deploy + observability</td>
+<td>Live environment with logs/error tracking</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>15. Detailed Task Breakdown</h2>
+<h3>Phase 0 — Setup</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Initialize repository, Next.js (TS strict), Tailwind, shadcn/ui.</li>
+<li><input disabled="" type="checkbox"> Configure ESLint, Prettier, <code>tsconfig</code> paths.</li>
+<li><input disabled="" type="checkbox"> Add Vitest + Testing Library + Playwright scaffolding.</li>
+<li><input disabled="" type="checkbox"> Add CI pipeline: install → lint → typecheck → test → build.</li>
+<li><input disabled="" type="checkbox"> Add <code>.env.example</code> and a config loader that fails fast on missing keys.</li>
+</ul>
+<h3>Phase 1 — Core Foundations</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Define normalized <code>Itinerary</code> types in <code>types/trip.ts</code>.</li>
+<li><input disabled="" type="checkbox"> Implement shared utils: <code>haversine</code>, <code>parse-json</code>, id generation.</li>
+<li><input disabled="" type="checkbox"> Implement <code>LLMClient</code> interface + OpenAI adapter (text + vision).</li>
+<li><input disabled="" type="checkbox"> Implement Tool Registry: register, <code>dispatch</code>, <code>dispatchWithFallback</code>, availability, temporary disable on 429.</li>
+<li><input disabled="" type="checkbox"> Implement Skills store + Memory store (JSON-backed, injectable paths).</li>
+<li><input disabled="" type="checkbox"> Unit tests for registry, skills, memory, utils.</li>
+</ul>
+<h3>Phase 2 — Agent Core</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Document Retrieval agent (text + vision) with prompt + parsing.</li>
+<li><input disabled="" type="checkbox"> Itinerary Creator agent (day structuring + estimate coords + cache lookup).</li>
+<li><input disabled="" type="checkbox"> Geocoding Verifier (country hint, constrained query, centroid sanity check, cache write).</li>
+<li><input disabled="" type="checkbox"> Route Creator (ORS → OSRM → Haversine fallback; per-day + cross-day).</li>
+<li><input disabled="" type="checkbox"> Transport Connector (airport lookup, flight/train enrichment, per-day assignment).</li>
+<li><input disabled="" type="checkbox"> Coordinator orchestration + post-run self-improvement.</li>
+<li><input disabled="" type="checkbox"> Golden-file tests using sample documents (text fixtures).</li>
+</ul>
+<h3>Phase 3 — API &amp; Streaming</h3>
+<ul>
+<li><input disabled="" type="checkbox"> <code>/api/extract-document</code>: parse PDF/DOCX/image/text → run pipeline.</li>
+<li><input disabled="" type="checkbox"> NDJSON streaming of progress events to the client.</li>
+<li><input disabled="" type="checkbox"> <code>/api/route</code> and <code>/api/flight</code> thin handlers over core tools.</li>
+<li><input disabled="" type="checkbox"> Robust error envelope (typed errors → user-friendly messages).</li>
+<li><input disabled="" type="checkbox"> Integration tests hitting the route handlers.</li>
+</ul>
+<h3>Phase 4 — 2D Map (MapLibre)</h3>
+<ul>
+<li><input disabled="" type="checkbox"> <code>MapAdapter</code> interface + <code>TripMap2D</code>.</li>
+<li><input disabled="" type="checkbox"> Markers with day colors, type icons, labels.</li>
+<li><input disabled="" type="checkbox"> Land routes; flight arcs; day/type filters.</li>
+<li><input disabled="" type="checkbox"> Fit-bounds and select-on-click behavior.</li>
+<li><input disabled="" type="checkbox"> Component tests for derived-render logic.</li>
+</ul>
+<h3>Phase 5 — 3D Globe (OpenGlobus)</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Install <code>@openglobus/og</code> + React bindings; client-only dynamic import.</li>
+<li><input disabled="" type="checkbox"> <code>TripMap3D</code>: entities for stops, polylines for routes.</li>
+<li><input disabled="" type="checkbox"> Great-circle flight paths.</li>
+<li><input disabled="" type="checkbox"> Day/type visibility filters; camera fit/fly-to.</li>
+<li><input disabled="" type="checkbox"> <code>MapViewToggle</code> (2D/3D) wired into <code>TripPlanner</code>.</li>
+<li><input disabled="" type="checkbox"> Performance pass: polyline simplification, lazy assets.</li>
+</ul>
+<h3>Phase 6 — Editing &amp; Export</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Add/remove/reorder stops; swap days; <strong>insert before/after</strong>.</li>
+<li><input disabled="" type="checkbox"> Live route recalculation (debounced) on edits.</li>
+<li><input disabled="" type="checkbox"> Export: PDF / HTML / Text including flights &amp; trains, per-day sections.</li>
+<li><input disabled="" type="checkbox"> Trip persistence (local store) with load/save; pluggable DB interface.</li>
+</ul>
+<h3>Phase 7 — Testing &amp; Hardening</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Raise unit coverage on core ≥ 70%.</li>
+<li><input disabled="" type="checkbox"> e2e happy paths (upload → view → edit → export).</li>
+<li><input disabled="" type="checkbox"> Error/empty/loading states across UI.</li>
+<li><input disabled="" type="checkbox"> Accessibility audit (keyboard, contrast, ARIA).</li>
+</ul>
+<h3>Phase 8 — Deployment</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Dockerfile + compose; production build.</li>
+<li><input disabled="" type="checkbox"> Structured logging + error tracking hook.</li>
+<li><input disabled="" type="checkbox"> Deploy to target environment; smoke tests.</li>
+<li><input disabled="" type="checkbox"> Write runbook + README.</li>
+</ul>
+<hr>
+<h2>16. Environment &amp; Setup Steps</h2>
+<pre><code># 1. Scaffold
+npx create-next-app@latest voyage-ai-3d --typescript --eslint --app --tailwind
+
+# 2. Core dependencies
+npm install maplibre-gl @openglobus/og @openglobus/openglobus-react \
+            openai unpdf mammoth zustand lucide-react
+
+# 3. Dev / test dependencies
+npm install -D vitest @testing-library/react @testing-library/jest-dom \
+              @playwright/test prettier
+
+# 4. Environment
+cp .env.example .env.local
+# Fill in: OPENAI_API_KEY, OPENROUTESERVICE_API_KEY, API_NINJAS_KEY
+
+# 5. Run
+npm run dev      # http://localhost:3000
+npm run test     # unit tests
+npm run test:e2e # playwright</code></pre><p><strong>Required environment variables</strong></p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Purpose</th>
+<th>Required</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>OPENAI_API_KEY</code></td>
+<td>LLM extraction &amp; enrichment</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>OPENROUTESERVICE_API_KEY</code></td>
+<td>Primary routing</td>
+<td>Recommended</td>
+</tr>
+<tr>
+<td><code>API_NINJAS_KEY</code></td>
+<td>Airport lookups</td>
+<td>Optional</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>17. Testing Strategy</h2>
+<pre class="mermaid">flowchart TD
+  E2E[E2E - Playwright&lt;br/&gt;upload→view→edit→export] --&gt; INT
+  INT[Integration - API routes + tools] --&gt; UNIT
+  UNIT[Unit - agent core, transforms, utils]</pre><table>
+<thead>
+<tr>
+<th>Level</th>
+<th>Scope</th>
+<th>Tooling</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Unit</td>
+<td>Agent core, tools, utils, data transforms</td>
+<td>Vitest</td>
+</tr>
+<tr>
+<td>Component</td>
+<td>Map adapters&#39; derived rendering, list/editing</td>
+<td>Testing Library</td>
+</tr>
+<tr>
+<td>Integration</td>
+<td>API routes + tool registry + fallbacks</td>
+<td>Vitest + mocked services</td>
+</tr>
+<tr>
+<td>E2E</td>
+<td>Full user journeys</td>
+<td>Playwright</td>
+</tr>
+<tr>
+<td>Golden files</td>
+<td>Pipeline output vs sample documents</td>
+<td>Vitest snapshots</td>
+</tr>
+</tbody></table>
+<p><strong>Principles:</strong> the agent core is testable without a browser; external services are mocked at the tool boundary; fallbacks have explicit tests (e.g., ORS down → OSRM → Haversine).</p>
+<hr>
+<h2>18. Deployment &amp; DevOps</h2>
+<ul>
+<li><strong>Containerization:</strong> multi-stage Dockerfile; <code>docker-compose</code> for local parity.</li>
+<li><strong>CI gates:</strong> lint → typecheck → unit/integration → build (block merge on failure).</li>
+<li><strong>CD:</strong> build image → deploy to target (Cloud Run / container host).</li>
+<li><strong>Config:</strong> secrets via environment, never committed; <code>.env.example</code> documents keys.</li>
+<li><strong>Observability:</strong> structured per-agent logs, request IDs, and an error-tracking hook.</li>
+<li><strong>Rollback:</strong> image tags per release; one-command rollback.</li>
+</ul>
+<hr>
+<h2>19. Risks &amp; Mitigations</h2>
+<table>
+<thead>
+<tr>
+<th>Risk</th>
+<th>Likelihood</th>
+<th>Impact</th>
+<th>Mitigation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>OpenGlobus learning curve / API gaps</td>
+<td>Medium</td>
+<td>Medium</td>
+<td>PoC first; keep 2D as fallback; isolate behind adapter</td>
+</tr>
+<tr>
+<td>WebGL performance on large trips</td>
+<td>Medium</td>
+<td>Medium</td>
+<td>Polyline simplification, entity batching, lazy loading</td>
+</tr>
+<tr>
+<td>LLM cost / latency / rate limits</td>
+<td>Medium</td>
+<td>High</td>
+<td>Caching via skills, provider abstraction, streaming UX</td>
+</tr>
+<tr>
+<td>Geocoding ambiguity</td>
+<td>Medium</td>
+<td>High</td>
+<td>Country hints + centroid sanity checks + cache</td>
+</tr>
+<tr>
+<td>Routing API limits (ORS/OSRM)</td>
+<td>High</td>
+<td>Medium</td>
+<td>Fallback chain + request throttling</td>
+</tr>
+<tr>
+<td>Bundle size from two map engines</td>
+<td>Medium</td>
+<td>Low</td>
+<td>Dynamic imports; load only the active engine</td>
+</tr>
+<tr>
+<td>Next.js SSR vs WebGL</td>
+<td>Medium</td>
+<td>Medium</td>
+<td>Strict client-only boundaries for 3D</td>
+</tr>
+<tr>
+<td>Scope creep</td>
+<td>Medium</td>
+<td>Medium</td>
+<td>Phase gates; defer non-goals to v2</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>20. Timeline &amp; Milestones</h2>
+<p>Assuming a single focused developer; parallelization shortens calendar time.</p>
+<table>
+<thead>
+<tr>
+<th>Milestone</th>
+<th>Phases</th>
+<th>Est. Duration</th>
+<th>Cumulative</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>M1 — Foundations ready</td>
+<td>0–1</td>
+<td>~2 weeks</td>
+<td>Week 2</td>
+</tr>
+<tr>
+<td>M2 — Pipeline produces itineraries</td>
+<td>2–3</td>
+<td>~3 weeks</td>
+<td>Week 5</td>
+</tr>
+<tr>
+<td>M3 — 2D parity</td>
+<td>4</td>
+<td>~1.5 weeks</td>
+<td>Week 6.5</td>
+</tr>
+<tr>
+<td>M4 — 3D globe live</td>
+<td>5</td>
+<td>~2 weeks</td>
+<td>Week 8.5</td>
+</tr>
+<tr>
+<td>M5 — Editing + export complete</td>
+<td>6</td>
+<td>~1.5 weeks</td>
+<td>Week 10</td>
+</tr>
+<tr>
+<td>M6 — Hardened + deployed</td>
+<td>7–8</td>
+<td>~2 weeks</td>
+<td>Week 12</td>
+</tr>
+</tbody></table>
+<p><strong>Overall estimate:</strong> ~12 weeks to a hardened v1 (solo). Add buffer for OpenGlobus exploration.</p>
+<hr>
+<h2>21. Success Metrics &amp; KPIs</h2>
+<table>
+<thead>
+<tr>
+<th>KPI</th>
+<th>Target</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Extraction accuracy (destinations correctly geolocated)</td>
+<td>≥ 90%</td>
+</tr>
+<tr>
+<td>Time from upload to rendered itinerary</td>
+<td>&lt; 30s typical document</td>
+</tr>
+<tr>
+<td>Globe frame rate (≤ 200 stops)</td>
+<td>≥ 30 FPS</td>
+</tr>
+<tr>
+<td>Core unit-test coverage</td>
+<td>≥ 70%</td>
+</tr>
+<tr>
+<td>Export completeness (incl. flights/trains)</td>
+<td>100% of present data</td>
+</tr>
+<tr>
+<td>External-API failure recovery</td>
+<td>100% via fallback/degradation</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>22. Future Enhancements</h2>
+<ul>
+<li>Authentication + cloud-synced trips (multi-device).</li>
+<li>Collaborative editing &amp; shareable public links.</li>
+<li>Animated 3D flythrough / &quot;cinematic tour&quot; export (video).</li>
+<li>Booking &amp; pricing integrations (flights, hotels).</li>
+<li>Offline/PWA mode.</li>
+<li>Additional providers (Anthropic/Gemini) behind the LLM interface.</li>
+<li>Terrain &amp; 3D building layers for city-level detail.</li>
+</ul>
+<hr>
+<h2>23. Appendix</h2>
+<h3>23.1 Glossary</h3>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Agent</td>
+<td>A specialized step in the AI pipeline</td>
+</tr>
+<tr>
+<td>Tool Registry</td>
+<td>Central catalog of external-capability wrappers with fallbacks</td>
+</tr>
+<tr>
+<td>Skill</td>
+<td>Cached procedural knowledge (e.g., geocoding results)</td>
+</tr>
+<tr>
+<td>Adapter</td>
+<td>Engine-agnostic map interface (2D/3D interchangeable)</td>
+</tr>
+<tr>
+<td>Great-circle</td>
+<td>Shortest path on a sphere; used for flight arcs</td>
+</tr>
+<tr>
+<td>NDJSON</td>
+<td>Newline-delimited JSON, used for progress streaming</td>
+</tr>
+</tbody></table>
+<h3>23.2 Key References</h3>
+<ul>
+<li>OpenGlobus — <a href="https://github.com/openglobus/openglobus">https://github.com/openglobus/openglobus</a></li>
+<li>OpenGlobus React — <a href="https://github.com/openglobus/openglobus-react">https://github.com/openglobus/openglobus-react</a></li>
+<li>MapLibre GL — <a href="https://maplibre.org">https://maplibre.org</a></li>
+<li>OpenRouteService — <a href="https://openrouteservice.org">https://openrouteservice.org</a></li>
+<li>OSRM — <a href="https://project-osrm.org">https://project-osrm.org</a></li>
+<li>Nominatim — <a href="https://nominatim.org">https://nominatim.org</a></li>
+</ul>
+<h3>23.3 Open Decisions (to confirm before Phase 0)</h3>
+<ol>
+<li>Keep MapLibre 2D long-term, or 3D-only after parity?</li>
+<li>Persistence target for v1: local-only, or include a database?</li>
+<li>Hosting target (Cloud Run, Vercel, self-hosted container)?</li>
+<li>Confirm OpenAI as the sole v1 LLM provider.</li>
+</ol>
+<hr>
+<p><em>End of document.</em></p>
+
+<script type="module">
+  try {
+    const mermaid = (await import("https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs")).default;
+    mermaid.initialize({ startOnLoad: false, theme: "neutral", securityLevel: "loose" });
+    await mermaid.run({ querySelector: "pre.mermaid" });
+  } catch (e) {
+    console.error("mermaid render failed", e);
+  } finally {
+    window.__renderComplete = true;
+    document.title = document.title + " [ready]";
+  }
+</script>
+</body>
+</html>
