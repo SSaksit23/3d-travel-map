@@ -27,23 +27,7 @@ interface TripMapProps {
   onVisibleDaysChange?: (days: Set<number>) => void;
 }
 
-// Drop malformed points (missing/NaN lng or lat) so a bad route geometry can't
-// crash MapLibre or the routeKey math (`start[0].toFixed`). Returns clean [lng, lat][].
-function sanitizeLngLatPath(
-  coordinates: Array<[number, number]> | undefined | null
-): [number, number][] {
-  if (!Array.isArray(coordinates)) return [];
-  const out: [number, number][] = [];
-  for (const point of coordinates) {
-    if (!Array.isArray(point) || point.length < 2) continue;
-    const [lng, lat] = point;
-    if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
-    out.push([lng, lat]);
-  }
-  return out;
-}
-
-// Generate curved arc points for flight routes (great circle approximation)
+import { buildLandRouteDisplayItems, sanitizePath2D } from "@/lib/map-route-display";
 function generateFlightArc(
   from: { lat: number; lng: number },
   to: { lat: number; lng: number },
@@ -175,143 +159,11 @@ export function TripMap({
     });
   }, [locations, visibleDays, visibleTypes]);
 
-  // Filter routes - only show LAND routes (not flights)
-  // Flight routes are rendered separately as curved arcs
-  const landRoutes = useMemo(() => routes.filter(route => !route.isFlight), [routes]);
-  
-  // Max distance for land routes (1000 km) - beyond this, locations should be connected by flight
-  const MAX_LAND_ROUTE_DISTANCE = 1000000; // meters (1000 km)
-  
-  // Calculate distance between two coordinates (Haversine formula)
-  const getDistance = (from: { lat: number; lng: number } | undefined, to: { lat: number; lng: number } | undefined) => {
-    // Return infinite distance if coordinates are invalid (will be filtered out)
-    if (!from || !to || !from.lat || !from.lng || !to.lat || !to.lng) {
-      return Infinity;
-    }
-    
-    const R = 6371000; // Earth's radius in meters
-    const lat1 = from.lat * Math.PI / 180;
-    const lat2 = to.lat * Math.PI / 180;
-    const deltaLat = (to.lat - from.lat) * Math.PI / 180;
-    const deltaLng = (to.lng - from.lng) * Math.PI / 180;
-
-    const a = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
-              Math.cos(lat1) * Math.cos(lat2) *
-              Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c;
-  };
-  
-  // Group locations by day for cross-day detection
-  const locationsByDay = useMemo(() => {
-    const map = new Map<number, TripLocation[]>();
-    locations.forEach(loc => {
-      const day = loc.day || 1;
-      if (!map.has(day)) {
-        map.set(day, []);
-      }
-      map.get(day)!.push(loc);
-    });
-    return map;
-  }, [locations]);
-
-  // Helper to check if a location is the last of its day
-  const isLastOfDay = (loc: TripLocation) => {
-    const dayLocs = locationsByDay.get(loc.day || 1) || [];
-    return dayLocs.length > 0 && dayLocs[dayLocs.length - 1].id === loc.id;
-  };
-
-  // Helper to check if a location is the first of its day
-  const isFirstOfDay = (loc: TripLocation) => {
-    const dayLocs = locationsByDay.get(loc.day || 1) || [];
-    return dayLocs.length > 0 && dayLocs[0].id === loc.id;
-  };
-
-  // Build mapping from land route index to location pair
-  const routeToLocationPair = useMemo(() => {
-    const mapping: Array<{ startLoc: TripLocation; endLoc: TripLocation; isCrossDay?: boolean }> = [];
-    let routeIdx = 0;
-    
-    for (let i = 0; i < locations.length - 1; i++) {
-      const startLoc = locations[i];
-      const endLoc = locations[i + 1];
-      
-      // Skip if either location is an airport (they use flight routes)
-      if (startLoc.type === 'airport' || endLoc.type === 'airport') {
-        continue;
-      }
-      
-      // Skip if locations are too far apart
-      const distance = getDistance(startLoc.coordinates, endLoc.coordinates);
-      if (distance > MAX_LAND_ROUTE_DISTANCE) {
-        continue;
-      }
-      
-      // Handle cross-day routes (last of day N → first of day N+1)
-      if (startLoc.day !== endLoc.day) {
-        const startDay = startLoc.day || 1;
-        const endDay = endLoc.day || 1;
-        
-        // Only allow cross-day if it's last→first and consecutive days
-        if (isLastOfDay(startLoc) && isFirstOfDay(endLoc) && endDay === startDay + 1) {
-          if (routeIdx < landRoutes.length) {
-            mapping.push({ startLoc, endLoc, isCrossDay: true });
-            routeIdx++;
-          }
-        }
-        continue;
-      }
-      
-      if (routeIdx < landRoutes.length) {
-        mapping.push({ startLoc, endLoc });
-        routeIdx++;
-      }
-    }
-    
-    return mapping;
-  }, [locations, landRoutes, locationsByDay]);
-
-  // Filter land routes based on visible days AND visible types
-  const filteredRoutes = useMemo(() => {
-    return landRoutes.map((route, index) => {
-      const pair = routeToLocationPair[index];
-      return { route, pair, index };
-    }).filter(({ route, pair }) => {
-      // Handle cross-day routes directly using route properties
-      if (route.isCrossDay) {
-        // Cross-day routes: check if both fromDay and toDay are visible
-        if (visibleDays) {
-          const fromDay = route.fromDay || 1;
-          const toDay = route.toDay || 1;
-          if (!visibleDays.has(fromDay) || !visibleDays.has(toDay)) {
-            return false;
-          }
-        }
-        // Cross-day routes should always be visible regardless of type filters
-        return true;
-      }
-      
-      // Regular routes: use pair mapping
-      if (!pair) return true;
-      
-      // Check day visibility
-      if (visibleDays) {
-        if (!visibleDays.has(pair.startLoc.day || 1) || !visibleDays.has(pair.endLoc.day || 1)) {
-          return false;
-        }
-      }
-      
-      // Check type visibility
-      if (visibleTypes) {
-        if (!visibleTypes.has(pair.startLoc.type || "custom") || !visibleTypes.has(pair.endLoc.type || "custom")) {
-          return false;
-        }
-      }
-      
-      return true;
-    });
-  }, [landRoutes, routeToLocationPair, visibleDays, visibleTypes]);
+  // Build land-route display items from route metadata (fromLocationId / toLocationId).
+  const landRouteItems = useMemo(
+    () => buildLandRouteDisplayItems(routes, locations, getDayColor, visibleDays, visibleTypes),
+    [routes, locations, visibleDays, visibleTypes]
+  );
 
   // Filter locations with valid coordinates
   const validLocations = useMemo(() => {
@@ -403,33 +255,19 @@ export function TripMap({
         <Map3DBuildings enabled={show3DBuildings} />
 
         {/* Render land routes with day-based colors - solid lines following roads */}
-        {filteredRoutes.map(({ route, pair, index }) => {
-          const isOvernight = route.isCrossDay || route.isOvernight;
-          const routeDay = isOvernight ? (route.fromDay || 1) : (pair?.startLoc.day || 1);
-          const routeColor = isOvernight ? "#8b5cf6" : getDayColor(routeDay).bg;
-
-          const coords = sanitizeLngLatPath(route.coordinates);
-          // Skip routes whose geometry is missing/degenerate to avoid crashing MapLibre.
-          if (coords.length < 2) return null;
-
-          const start = coords[0];
-          const end = coords[coords.length - 1];
-          const routeKey = `route-${index}-${start[0].toFixed(4)}-${start[1].toFixed(4)}-${end[0].toFixed(4)}-${end[1].toFixed(4)}`;
-
-          return (
-            <MapRoute
-              key={routeKey}
-              coordinates={coords}
-              color={routeColor}
-              width={4}
-              opacity={0.85}
-            />
-          );
-        })}
+        {landRouteItems.map((item) => (
+          <MapRoute
+            key={item.key}
+            coordinates={item.path2d}
+            color={item.color}
+            width={4}
+            opacity={0.85}
+          />
+        ))}
 
         {/* Render flight routes as curved arcs */}
         {flightRoutes.map(({ flight, coordinates }) => {
-          const coords = sanitizeLngLatPath(coordinates);
+          const coords = sanitizePath2D(coordinates);
           if (coords.length < 2) return null;
           return (
             <MapRoute

@@ -16,6 +16,7 @@ import { GlobusRgbTerrain, Extent, LonLat } from "@openglobus/og";
 import "@openglobus/og/styles";
 import type { TripLocation, RouteInfo, FlightInfo } from "@/types/trip";
 import { getDayColor } from "./TripStopsList";
+import { buildLandRouteDisplayItems } from "@/lib/map-route-display";
 
 interface TripMap3DProps {
   locations: TripLocation[];
@@ -32,8 +33,6 @@ interface TripMap3DProps {
 const FLIGHT_COLOR = "#0ea5e9";
 const STATION_COLOR = "#10b981";
 const AIRPORT_COLOR = "#0ea5e9";
-const OVERNIGHT_COLOR = "#8b5cf6";
-const MAX_LAND_ROUTE_DISTANCE = 1000000; // meters (1000 km)
 
 // ---- Marker image generation (canvas -> data URI, avoids OpenGlobus font atlas) ----
 const markerCache = new Map<string, string>();
@@ -83,33 +82,6 @@ function makeMarkerDataUrl(color: string, text: string, selected: boolean): stri
   return url;
 }
 
-// ---- Coordinate sanitizers (OpenGlobus crashes on undefined/NaN path points) ----
-function isValidCoord(c: { lat: number; lng: number } | undefined | null): boolean {
-  return (
-    !!c &&
-    typeof c.lat === "number" &&
-    typeof c.lng === "number" &&
-    Number.isFinite(c.lat) &&
-    Number.isFinite(c.lng)
-  );
-}
-
-// Turn a raw [lng, lat][] route geometry into a clean [lng, lat, alt][] path,
-// discarding any malformed points so OpenGlobus never reads `.x` of undefined.
-function sanitizePath3D(
-  coordinates: Array<[number, number]> | undefined | null
-): [number, number, number][] {
-  if (!Array.isArray(coordinates)) return [];
-  const out: [number, number, number][] = [];
-  for (const point of coordinates) {
-    if (!Array.isArray(point) || point.length < 2) continue;
-    const [lng, lat] = point;
-    if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
-    out.push([lng, lat, 200]);
-  }
-  return out;
-}
-
 // ---- Flight arc with altitude (the 3D advantage) ----
 function generateFlightArc3D(
   from: { lat: number; lng: number },
@@ -131,22 +103,6 @@ function generateFlightArc3D(
     points.push([lng, lat, alt]);
   }
   return points;
-}
-
-function getDistance(
-  from: { lat: number; lng: number } | undefined,
-  to: { lat: number; lng: number } | undefined
-): number {
-  if (!from || !to || !from.lat || !from.lng || !to.lat || !to.lng) return Infinity;
-  const R = 6371000;
-  const lat1 = (from.lat * Math.PI) / 180;
-  const lat2 = (to.lat * Math.PI) / 180;
-  const dLat = ((to.lat - from.lat) * Math.PI) / 180;
-  const dLng = ((to.lng - from.lng) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 // ---- Camera framing: flies to the bounds of the visible stops ----
@@ -224,96 +180,23 @@ export default function TripMap3D({
     [filteredLocations]
   );
 
-  // --- Land routes (exclude flights) + map each to its location pair (mirrors TripMap) ---
-  const landRoutes = useMemo(() => routes.filter((r) => !r.isFlight), [routes]);
-
-  const locationsByDay = useMemo(() => {
-    const map = new Map<number, TripLocation[]>();
-    locations.forEach((loc) => {
-      const day = loc.day || 1;
-      if (!map.has(day)) map.set(day, []);
-      map.get(day)!.push(loc);
-    });
-    return map;
-  }, [locations]);
-
-  const routeToLocationPair = useMemo(() => {
-    const mapping: Array<{ startLoc: TripLocation; endLoc: TripLocation }> = [];
-    let routeIdx = 0;
-    const isLastOfDay = (loc: TripLocation) => {
-      const d = locationsByDay.get(loc.day || 1) || [];
-      return d.length > 0 && d[d.length - 1].id === loc.id;
-    };
-    const isFirstOfDay = (loc: TripLocation) => {
-      const d = locationsByDay.get(loc.day || 1) || [];
-      return d.length > 0 && d[0].id === loc.id;
-    };
-    for (let i = 0; i < locations.length - 1; i++) {
-      const startLoc = locations[i];
-      const endLoc = locations[i + 1];
-      if (startLoc.type === "airport" || endLoc.type === "airport") continue;
-      if (getDistance(startLoc.coordinates, endLoc.coordinates) > MAX_LAND_ROUTE_DISTANCE) continue;
-      if (startLoc.day !== endLoc.day) {
-        const startDay = startLoc.day || 1;
-        const endDay = endLoc.day || 1;
-        if (isLastOfDay(startLoc) && isFirstOfDay(endLoc) && endDay === startDay + 1) {
-          if (routeIdx < landRoutes.length) {
-            mapping.push({ startLoc, endLoc });
-            routeIdx++;
-          }
-        }
-        continue;
-      }
-      if (routeIdx < landRoutes.length) {
-        mapping.push({ startLoc, endLoc });
-        routeIdx++;
-      }
-    }
-    return mapping;
-  }, [locations, landRoutes, locationsByDay]);
-
-  const renderRoutes = useMemo(() => {
-    return landRoutes
-      .map((route, index) => ({ route, pair: routeToLocationPair[index], index }))
-      .filter(({ route, pair }) => {
-        if (route.isCrossDay || route.isOvernight) {
-          if (visibleDays) {
-            const fromDay = route.fromDay || 1;
-            const toDay = route.toDay || 1;
-            if (!visibleDays.has(fromDay) || !visibleDays.has(toDay)) return false;
-          }
-          return true;
-        }
-        if (!pair) return true;
-        if (visibleDays) {
-          if (!visibleDays.has(pair.startLoc.day || 1) || !visibleDays.has(pair.endLoc.day || 1))
-            return false;
-        }
-        if (visibleTypes) {
-          if (
-            !visibleTypes.has(pair.startLoc.type || "custom") ||
-            !visibleTypes.has(pair.endLoc.type || "custom")
-          )
-            return false;
-        }
-        return true;
-      })
-      .map(({ route, pair, index }) => {
-        const isOvernight = route.isCrossDay || route.isOvernight;
-        const routeDay = isOvernight ? route.fromDay || 1 : pair?.startLoc.day || 1;
-        const color = isOvernight ? OVERNIGHT_COLOR : getDayColor(routeDay).bg;
-        const path = sanitizePath3D(route.coordinates);
-        return { key: `route-${index}`, path, color };
-      })
-      // Drop any route whose geometry is missing/degenerate — feeding an
-      // undefined or single-point path to OpenGlobus crashes its renderer.
-      .filter((r) => r.path.length >= 2);
-  }, [landRoutes, routeToLocationPair, visibleDays, visibleTypes]);
+  const renderRoutes = useMemo(
+    () => buildLandRouteDisplayItems(routes, locations, getDayColor, visibleDays, visibleTypes),
+    [routes, locations, visibleDays, visibleTypes]
+  );
 
   const flightArcs = useMemo(() => {
     return flights
       .filter((f) => !visibleDays || visibleDays.has(f.day || 1))
-      .filter((f) => isValidCoord(f.departure?.coordinates) && isValidCoord(f.arrival?.coordinates))
+      .filter(
+        (f) =>
+          f.departure?.coordinates &&
+          f.arrival?.coordinates &&
+          Number.isFinite(f.departure.coordinates.lat) &&
+          Number.isFinite(f.departure.coordinates.lng) &&
+          Number.isFinite(f.arrival.coordinates.lat) &&
+          Number.isFinite(f.arrival.coordinates.lng)
+      )
       .map((flight) => ({
         key: `flight-${flight.id}`,
         path: generateFlightArc3D(flight.departure.coordinates, flight.arrival.coordinates),
@@ -389,7 +272,7 @@ export default function TripMap3D({
             {([
               ...renderRoutes.map((r) => (
                 <Entity key={r.key}>
-                  <Polyline path={[r.path]} color={r.color} thickness={4} opacity={0.9} />
+                  <Polyline path={[r.path3d]} color={r.color} thickness={4} opacity={0.9} />
                 </Entity>
               )),
               ...flightArcs.map((f) => (

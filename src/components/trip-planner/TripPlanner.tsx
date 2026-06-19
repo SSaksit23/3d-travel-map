@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Plane, Sparkles, X, PanelLeftClose, PanelLeft, Maximize2, Minimize2, Upload, Download, PlaneTakeoff, Train, Hotel, Save, FolderOpen, Trash2, Clock, RotateCw, Globe2, Map as MapIcon } from "lucide-react";
+import { Plane, Sparkles, X, PanelLeftClose, PanelLeft, Maximize2, Minimize2, Upload, Download, PlaneTakeoff, Train, Hotel, Save, FolderOpen, Trash2, Clock, RotateCw, Globe2, Map as MapIcon, FilePlus } from "lucide-react";
 import { LocationSearch } from "./LocationSearch";
 import { TripStopsList } from "./TripStopsList";
 import { TripMap } from "./TripMap";
@@ -13,6 +13,14 @@ import { TrainInput } from "./TrainInput";
 import { Button } from "@/components/ui/button";
 import type { TripLocation, RouteInfo, GeminiResponse, GeocodeResult, FlightInfo, TrainInfo, AccommodationSuggestion, SavedTrip } from "@/types/trip";
 import { calculateDistance } from "@/lib/utils";
+import {
+  loadSavedTrips,
+  persistSavedTrips,
+  loadActiveTripId,
+  persistActiveTripId,
+  upsertSavedTrip,
+} from "@/lib/trip-storage";
+import { normalizeLocationOrders } from "@/lib/trip-order";
 
 interface OvernightRoute {
   fromDay: number;
@@ -57,41 +65,12 @@ export function TripPlanner() {
   const [savedTrips, setSavedTrips] = useState<SavedTrip[]>([]);
   const [showSavedTrips, setShowSavedTrips] = useState(false);
   const [tripName, setTripName] = useState("");
+  const [activeTripId, setActiveTripId] = useState<string | null>(null);
+  const [activeTripName, setActiveTripName] = useState("Untitled trip");
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const STORAGE_KEY = "voyageai_saved_trips";
-
-  // Load saved trips from localStorage on mount
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setSavedTrips(JSON.parse(raw));
-    } catch { /* ignore corrupt data */ }
-  }, []);
-
-  const persistTrips = useCallback((trips: SavedTrip[]) => {
-    setSavedTrips(trips);
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(trips)); } catch { /* quota */ }
-  }, []);
-
-  const handleSaveTrip = useCallback(() => {
-    if (locations.length === 0) return;
-    const name = tripName.trim() || `Trip ${new Date().toLocaleDateString()}`;
-    const trip: SavedTrip = {
-      id: `trip-${Date.now()}`,
-      name,
-      savedAt: new Date().toISOString(),
-      locations,
-      routes,
-      flights,
-      trains,
-      days,
-    };
-    persistTrips([trip, ...savedTrips]);
-    setTripName("");
-  }, [locations, routes, flights, trains, days, tripName, savedTrips, persistTrips]);
-
-  const handleLoadTrip = useCallback((trip: SavedTrip) => {
+  const applySavedTrip = useCallback((trip: SavedTrip) => {
     setLocations(trip.locations);
     setRoutes(trip.routes);
     setFlights(trip.flights || []);
@@ -100,12 +79,109 @@ export function TripPlanner() {
     setVisibleDays(new Set(trip.days.length > 0 ? trip.days : [1]));
     setVisibleTypes(new Set(["attraction", "restaurant", "hotel", "landmark", "city", "airport", "station", "custom"]));
     setSelectedLocationId(null);
-    setShowSavedTrips(false);
+    setActiveTripId(trip.id);
+    setActiveTripName(trip.name);
+    setTripName(trip.name);
+    persistActiveTripId(trip.id);
   }, []);
+
+  const clearTripWorkspace = useCallback(() => {
+    setLocations([]);
+    setRoutes([]);
+    setFlights([]);
+    setTrains([]);
+    setDays([1]);
+    setVisibleDays(new Set([1]));
+    setVisibleTypes(new Set(["attraction", "restaurant", "hotel", "landmark", "city", "airport", "station", "custom"]));
+    setSelectedLocationId(null);
+    setAiMessage(null);
+    setSuggestions([]);
+    setOvernightRoutes([]);
+    setAccommodationSuggestions(new Map());
+    setTripName("");
+  }, []);
+
+  const handleNewTrip = useCallback(() => {
+    const newId = `trip-${Date.now()}`;
+    clearTripWorkspace();
+    setActiveTripId(newId);
+    setActiveTripName("Untitled trip");
+    persistActiveTripId(newId);
+    setShowSavedTrips(false);
+  }, [clearTripWorkspace]);
+
+  const persistCurrentTrip = useCallback((
+    tripId: string,
+    name: string,
+    snapshot: {
+      locations: TripLocation[];
+      routes: RouteInfo[];
+      flights: FlightInfo[];
+      trains: TrainInfo[];
+      days: number[];
+    }
+  ) => {
+    if (snapshot.locations.length === 0) return;
+    const trip: SavedTrip = {
+      id: tripId,
+      name,
+      savedAt: new Date().toISOString(),
+      ...snapshot,
+    };
+    setSavedTrips((prev) => {
+      const next = upsertSavedTrip(prev, trip);
+      persistSavedTrips(next);
+      return next;
+    });
+  }, []);
+
+  // Load saved trips + restore last active trip on mount
+  useEffect(() => {
+    const trips = loadSavedTrips();
+    setSavedTrips(trips);
+    const activeId = loadActiveTripId();
+    if (!activeId) return;
+    const active = trips.find((t) => t.id === activeId);
+    if (active) applySavedTrip(active);
+  }, [applySavedTrip]);
+
+  const persistTrips = useCallback((trips: SavedTrip[]) => {
+    setSavedTrips(trips);
+    persistSavedTrips(trips);
+  }, []);
+
+  const handleSaveTrip = useCallback(() => {
+    if (locations.length === 0) return;
+    const name = tripName.trim() || activeTripName || `Trip ${new Date().toLocaleDateString()}`;
+    const tripId = activeTripId || `trip-${Date.now()}`;
+    const trip: SavedTrip = {
+      id: tripId,
+      name,
+      savedAt: new Date().toISOString(),
+      locations,
+      routes,
+      flights,
+      trains,
+      days,
+    };
+    persistTrips(upsertSavedTrip(savedTrips, trip));
+    setActiveTripId(tripId);
+    setActiveTripName(name);
+    setTripName("");
+    persistActiveTripId(tripId);
+  }, [locations, routes, flights, trains, days, tripName, activeTripId, activeTripName, savedTrips, persistTrips]);
+
+  const handleLoadTrip = useCallback((trip: SavedTrip) => {
+    applySavedTrip(trip);
+    setShowSavedTrips(false);
+  }, [applySavedTrip]);
 
   const handleDeleteTrip = useCallback((tripId: string) => {
     persistTrips(savedTrips.filter(t => t.id !== tripId));
-  }, [savedTrips, persistTrips]);
+    if (activeTripId === tripId) {
+      handleNewTrip();
+    }
+  }, [savedTrips, persistTrips, activeTripId, handleNewTrip]);
 
   // Fetch route between two points - tries local OSMnx service first, then falls back to OSRM
   const fetchRoute = useCallback(async (
@@ -433,6 +509,24 @@ export function TripPlanner() {
     });
   }, [fetchRoute, flights]);
 
+  // Auto-save the active trip whenever its data changes (debounced).
+  useEffect(() => {
+    if (!activeTripId || locations.length === 0) return;
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(() => {
+      persistCurrentTrip(activeTripId, activeTripName, {
+        locations,
+        routes,
+        flights,
+        trains,
+        days,
+      });
+    }, 1500);
+    return () => {
+      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    };
+  }, [activeTripId, activeTripName, locations, routes, flights, trains, days, persistCurrentTrip]);
+
   // Auto-recalculate routes whenever locations change (debounced to avoid rapid-fire calls)
   const routeRecalcTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevLocationsRef = useRef<TripLocation[]>([]);
@@ -528,6 +622,12 @@ export function TripPlanner() {
 
   // Add a location from geocode result
   const handleLocationSelect = useCallback(async (result: GeocodeResult) => {
+    if (!activeTripId) {
+      const newId = `trip-${Date.now()}`;
+      setActiveTripId(newId);
+      setActiveTripName("Untitled trip");
+      persistActiveTripId(newId);
+    }
     const currentMaxDay = Math.max(...days, 1);
     const newLocation: TripLocation = {
       id: generateId(),
@@ -542,7 +642,7 @@ export function TripPlanner() {
     setLocations(newLocations);
     setSelectedLocationId(newLocation.id);
     await calculateRoutes(newLocations);
-  }, [locations, days, calculateRoutes]);
+  }, [locations, days, calculateRoutes, activeTripId]);
 
   // AI-powered search using Gemini
   const handleAISearch = useCallback(async (query: string) => {
@@ -1030,6 +1130,13 @@ export function TripPlanner() {
     message?: string;
     estimatedDays?: number;
   }) => {
+    // Each document upload starts a fresh trip — never merge into the current one.
+    const newTripId = `trip-${Date.now()}`;
+    const extractedFlights: FlightInfo[] = [];
+    const extractedTrains: TrainInfo[] = [];
+    const extractedFlightRoutes: RouteInfo[] = [];
+    const extractedTrainRoutes: RouteInfo[] = [];
+
     const allDays: number[] = [];
     let allNewLocations: TripLocation[] = [];
     
@@ -1071,7 +1178,7 @@ export function TripPlanner() {
           coordinates: loc.coordinates,
           type: loc.type as TripLocation["type"],
           day: day,
-          order: locations.length + currentOrder + (day - 1) * 100, // Offset by day to maintain global order
+          order: currentOrder,
         };
       });
       
@@ -1145,8 +1252,8 @@ export function TripPlanner() {
             day: flightDay,
           };
 
-          // Add to flights state
-          setFlights(prev => [...prev, flightInfo]);
+          // Collect flight (replaces any previous trip data)
+          extractedFlights.push(flightInfo);
 
           // Add departure and arrival as locations
           const depLocation: TripLocation = {
@@ -1156,7 +1263,7 @@ export function TripPlanner() {
             coordinates: depCoords,
             type: "airport",
             day: flightDay,
-            order: locations.length + allNewLocations.length,
+            order: allNewLocations.length,
           };
 
           const arrLocation: TripLocation = {
@@ -1166,7 +1273,7 @@ export function TripPlanner() {
             coordinates: arrCoords,
             type: "airport",
             day: flightDay,
-            order: locations.length + allNewLocations.length + 1,
+            order: allNewLocations.length + 1,
           };
 
           allNewLocations = [...allNewLocations, depLocation, arrLocation];
@@ -1181,7 +1288,7 @@ export function TripPlanner() {
             distance: calculateFlightDistance(depCoords, arrCoords),
             isFlight: true,
           };
-          setRoutes(prev => [...prev, flightRoute]);
+          extractedFlightRoutes.push(flightRoute);
         }
       }
     }
@@ -1240,8 +1347,7 @@ export function TripPlanner() {
             day: trainDay,
           };
 
-          // Add to trains state
-          setTrains(prev => [...prev, trainInfo]);
+          extractedTrains.push(trainInfo);
 
           // Add departure and arrival as locations
           const depLocation: TripLocation = {
@@ -1251,7 +1357,7 @@ export function TripPlanner() {
             coordinates: depCoords,
             type: "station",
             day: trainDay,
-            order: locations.length + allNewLocations.length,
+            order: allNewLocations.length,
           };
 
           const arrLocation: TripLocation = {
@@ -1261,7 +1367,7 @@ export function TripPlanner() {
             coordinates: arrCoords,
             type: "station",
             day: trainDay,
-            order: locations.length + allNewLocations.length + 1,
+            order: allNewLocations.length + 1,
           };
 
           allNewLocations = [...allNewLocations, depLocation, arrLocation];
@@ -1269,31 +1375,47 @@ export function TripPlanner() {
           // Calculate train route
           const trainRoute = await fetchRoute(depCoords, arrCoords);
           if (trainRoute) {
-            setRoutes(prev => [...prev, trainRoute]);
+            extractedTrainRoutes.push(trainRoute);
           }
         }
       }
     }
 
-    // Update state with all new locations
+    // Apply extracted data as a brand-new trip (no merge with previous workspace).
     if (allNewLocations.length > 0) {
-      // Update days array
-      const newDays = [...new Set([...days, ...allDays])].sort((a, b) => a - b);
+      const normalizedLocations = normalizeLocationOrders(allNewLocations);
+      const newDays = [...new Set(allDays.length > 0 ? allDays : [1])].sort((a, b) => a - b);
+      const tripLabel = data.message?.slice(0, 60) || `Uploaded trip ${new Date().toLocaleDateString()}`;
+
+      setActiveTripId(newTripId);
+      setActiveTripName(tripLabel);
+      setTripName(tripLabel);
+      persistActiveTripId(newTripId);
+
       setDays(newDays);
-      setVisibleDays(prev => new Set([...prev, ...allDays]));
+      setVisibleDays(new Set(newDays));
+      setFlights(extractedFlights);
+      setTrains(extractedTrains);
+      setRoutes([...extractedFlightRoutes, ...extractedTrainRoutes]);
+      setLocations(normalizedLocations);
+      setSelectedLocationId(normalizedLocations[0].id);
 
-      const allLocations = [...locations, ...allNewLocations];
-      setLocations(allLocations);
+      await calculateRoutes(normalizedLocations, extractedFlights);
 
-      setSelectedLocationId(allNewLocations[0].id);
-      await calculateRoutes(allLocations.filter(l => l.type !== "airport")); // Don't recalculate for flights
+      persistCurrentTrip(newTripId, tripLabel, {
+        locations: normalizedLocations,
+        routes: [...extractedFlightRoutes, ...extractedTrainRoutes],
+        flights: extractedFlights,
+        trains: extractedTrains,
+        days: newDays,
+      });
     }
 
     // Show AI message if provided
     if (data.message) {
       setAiMessage(data.message);
     }
-  }, [locations, days, calculateRoutes, fetchRoute]);
+  }, [calculateRoutes, fetchRoute, persistCurrentTrip]);
 
   // Helper to extract airline from flight number
   const extractAirlineFromNumber = (fn: string): string => {
@@ -1557,7 +1679,13 @@ export function TripPlanner() {
                 <h1 className="text-lg font-bold bg-gradient-to-r from-violet-400 to-indigo-400 bg-clip-text text-transparent">
                   Voyage AI
                 </h1>
-                <p className="text-[10px] text-muted-foreground">AI-Powered Trip Planner</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {locations.length > 0 ? (
+                    <>Current trip: <span className="text-foreground/80">{activeTripName}</span></>
+                  ) : (
+                    "AI-Powered Trip Planner"
+                  )}
+                </p>
               </div>
             </div>
           </div>
@@ -1571,6 +1699,15 @@ export function TripPlanner() {
                 placeholder="Try: 'Plan a 3-day trip to Paris' or 'Road trip from LA to San Francisco'"
               />
             </div>
+            <Button
+              onClick={handleNewTrip}
+              variant="outline"
+              className="h-12 px-4 gap-2 border-indigo-500/30 hover:border-indigo-500/50 hover:bg-indigo-500/10"
+              title="Start a new empty trip"
+            >
+              <FilePlus className="size-4" />
+              <span className="hidden sm:inline">New Trip</span>
+            </Button>
             <Button
               onClick={() => setShowUploadModal(true)}
               variant="outline"
@@ -1915,7 +2052,11 @@ export function TripPlanner() {
                 savedTrips.map((trip) => (
                   <div
                     key={trip.id}
-                    className="group flex items-center gap-3 p-3 rounded-xl border border-border/40 hover:border-amber-500/40 hover:bg-accent/40 transition-all cursor-pointer"
+                    className={`group flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer ${
+                      trip.id === activeTripId
+                        ? "border-amber-500/60 bg-amber-500/10"
+                        : "border-border/40 hover:border-amber-500/40 hover:bg-accent/40"
+                    }`}
                     onClick={() => handleLoadTrip(trip)}
                   >
                     <div className="size-10 rounded-lg bg-gradient-to-br from-amber-500/20 to-orange-500/20 flex items-center justify-center flex-shrink-0">
